@@ -1,0 +1,25 @@
+{
+  "name": "mmm-lmc-prediction",
+  "version": "1.0.0",
+  "description": "",
+  "main": "MMM-LMC-Prediction.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Infin1te2021/MMM-LMC-Prediction.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Infin1te2021/MMM-LMC-Prediction/issues"
+  },
+  "homepage": "https://github.com/Infin1te2021/MMM-LMC-Prediction#readme",
+  "dependencies": {
+    "@tensorflow/tfjs-node-gpu": "^4.2.0",
+    "fast-csv": "^4.3.6",
+	"cylon": "^1.3.0",
+    "cylon-leapmotion": "^0.21.0"
+  }
+}
