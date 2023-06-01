@@ -1,32 +1,33 @@
-var NodeHelper = require("node_helper");
+const NodeHelper = require("node_helper");
 var Cylon = require('cylon');
 const Log = require("../../js/logger.js");
 const tf = require('@tensorflow/tfjs-node-gpu');
+const fs = require('fs');
+const fastCsv = require('fast-csv');
 
-const gesture = ['Swipe_Left', 'Swipe_Right', 'Push', 'Clockwise-Circle', 'Anti-Clockwise-Circle'];
-const prob_bound = 0.3;
+const gesture = ['Swipe_Left', 'Swipe_Right', 'Push', 'Clockwise-Circle', 'Anti-Clockwise-Circle', 'Up', 'Down'];
+const prob_bound = 0.4;
 
 module.exports = NodeHelper.create({
-    start: function () {
-        Log.log("Starting node helper for: " + this.name);
-        this.config = null;
-    },
+	start: function () {
+		Log.log("Starting node helper for: " + this.name);
+		this.config = null;
+	},
 
-    socketNotificationReceived: function (notification, payload) {
-        if (notification === "SET_CONFIG" && typeof payload === 'object') {
+	socketNotificationReceived: function (notification, payload) {
+		if (notification === "SET_CONFIG" && typeof payload === 'object') {
+			this.config = payload;
+			var self = this;
+            var lastGesture = '' ;
+			var handDetected = false;
+			var grabStrengthDetected = false;
+			var startTime = 0;
+			var fingersData = [];
+			var recordStatus = false;
+			var secCount = true;
 
-            this.config = payload;
 
-            var self = this;
-            var lastGesture = '';
-            var handDetected = false;
-            var grabStrengthDetected = false;
-            var startTime = 0;
-            var fingersData = [];
-            var recordStatus = false;
-            var secCount = true;
-
-            Cylon.robot({
+			Cylon.robot({
                 connections: {
                     leapmotion: {
                         adaptor: 'leapmotion'
@@ -101,11 +102,11 @@ module.exports = NodeHelper.create({
 
                                 var currentTime = new Date().getTime();
 
-                                if (currentTime - startTime >= 2000) {
+                                if (currentTime - startTime >= 1000) {
                                     console.log("Grab strength sustained for 2 seconds");
                                     secCount = false;
                                     async function countdown() {
-                                        var count = 2;
+                                        var count = 1;
                                         console.log("Recording will start in:");
                                         await new Promise(resolve => setTimeout(resolve, 1000));
                                         for (let i = count; i > 0; i--) {
@@ -165,48 +166,59 @@ module.exports = NodeHelper.create({
         }
     },
 
-    doPredictionForRealTimeRecord: async function (data) {
+	doPredictionForRealTimeRecord: async function (data) {
         var self = this;
         var inputData = tf.tensor(data)
         var reshapedData = tf.reshape(inputData, [1, 100, 30]);
 
-        const handler = tf.io.fileSystem('modules/MMM-LMC-Prediction/tfjs_files/model.json');
+        const handler = tf.io.fileSystem('modules/MMM-LMC-Prediction/tfjs_file2/model.json');
         const model = await tf.loadLayersModel(handler);
         var result = model.predict(reshapedData);
 
         var Argmax = tf.argMax(tf.tensor1d(result.dataSync()).dataSync());
+		console.log(result.dataSync());
+		if (result.dataSync()[0] >= prob_bound || result.dataSync()[1] >= prob_bound || result.dataSync()[2] >= prob_bound || result.dataSync()[3] >= prob_bound ||result.dataSync()[4] >= prob_bound ||result.dataSync()[5] >= prob_bound ||result.dataSync()[6] >= prob_bound){
 
-        if (result.dataSync()[0] >= prob_bound || result.dataSync()[1] >= prob_bound || result.dataSync()[2] >= prob_bound || result.dataSync()[3] >= prob_bound || result.dataSync()[4] >= prob_bound) {
-
-            predResult = gesture[Argmax.dataSync()];
-
-            if (predResult === gesture[0]) {
-                console.log(gesture[0]);
-                self.sendSocketNotification('LEAP_MOTION_GESTURE', 'LEAP_MOTION_SWIPE_LEFT');
-                lastGesture = `${gesture[0]}`
-            }
-            else if (predResult === gesture[1]) {
-                console.log(gesture[1]);
-                self.sendSocketNotification('LEAP_MOTION_GESTURE', 'LEAP_MOTION_SWIPE_RIGHT');
-                lastGesture = `${gesture[1]}`
-            }
-            else if (predResult === gesture[2]) {
-                console.log(gesture[2]);
-                self.sendSocketNotification('LEAP_MOTION_GESTURE', 'LEAP_MOTION_SWIPE_PUSH');
-                lastGesture = `${gesture[2]}`
-            }
-            else if (predResult === gesture[3]) {
-                console.log(gesture[3]);
-                self.sendSocketNotification('LEAP_MOTION_GESTURE', 'LEAP_MOTION_CLK_CIR');
-                lastGesture = `${gesture[3]}`
-            }
-            else if (predResult === gesture[4]) {
-                console.log(gesture[4]);
-                self.sendSocketNotification('LEAP_MOTION_GESTURE', 'LEAP_MOTION_ACLK_CIR');
-                lastGesture = `${gesture[4]}`
-            }
-        } else {
-            console.log("try again");
-        }
-    }
+			predResult = gesture[Argmax.dataSync()];
+			if (predResult === gesture[0]) {
+				// Swipe left -> To previous page
+				console.log(gesture[0]);
+				self.sendSocketNotification('LEAP_MOTION_GESTURE', 'LEAP_MOTION_SWIPE_LEFT');
+			}
+			else if (predResult === gesture[1]) {
+				// Swipe right -> To next page
+				console.log(gesture[1]);
+				self.sendSocketNotification('LEAP_MOTION_GESTURE', 'LEAP_MOTION_SWIPE_RIGHT');
+			}
+			else if (predResult === gesture[2]){
+				console.log(gesture[2]);
+				self.sendSocketNotification('LEAP_MOTION_GESTURE', 'LEAP_MOTION_PUSH');
+			}
+			else if (predResult === gesture[3]){
+				// Clockwise circle -> To the first page
+				console.log(gesture[3]);
+				self.sendSocketNotification('LEAP_MOTION_GESTURE', 'LEAP_MOTION_CLK_CIR');
+			}
+			else if (predResult === gesture[4]){
+				// Anti-clockwise circle -> To the last page
+				console.log(gesture[4]);
+				self.sendSocketNotification('LEAP_MOTION_GESTURE', 'LEAP_MOTION_ACLK_CIR');
+			}
+			else if (predResult === gesture[5]){
+				// Swipe up -> Display the next day weather forecast
+				console.log(gesture[6]);
+				self.sendSocketNotification('LEAP_MOTION_GESTURE', 'LEAP_MOTION_UP');
+			}
+			else if (predResult === gesture[6]){
+				console.log(gesture[5]);
+				self.sendSocketNotification('LEAP_MOTION_GESTURE', 'LEAP_MOTION_DOWN');
+			}
+			else if (predResult === gesture[7]){
+				console.log(gesture[7]);
+				self.sendSocketNotification('LEAP_MOTION_GESTURE', 'LEAP_MOTION_GRAB');
+			}
+		}else{
+			console.log("try again");
+		}
+	}
 });
